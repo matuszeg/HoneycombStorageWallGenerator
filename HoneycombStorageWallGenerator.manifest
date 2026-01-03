@@ -5,7 +5,7 @@
 	"description":	{
 		"":	"Create Honeycomb Storage Wall Parts"
 	},
-	"version":	"0.0.1",
+	"version":	"0.1.0",
 	"runOnStartup":	false,
 	"supportedOS":	"windows|mac",
 	"editEnabled":	true,

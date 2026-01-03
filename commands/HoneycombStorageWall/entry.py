@@ -82,8 +82,8 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     inputs = args.command.commandInputs
 
     # Input Definitions
-    width_input = inputs.addDistanceValueCommandInput('width','Width', adsk.core.ValueInput.createByReal(10.0))
-    height_input = inputs.addDistanceValueCommandInput('height','Height', adsk.core.ValueInput.createByReal(10.0))
+    width_input = inputs.addDistanceValueCommandInput('width','Width', adsk.core.ValueInput.createByReal(25.6))
+    height_input = inputs.addDistanceValueCommandInput('height','Height', adsk.core.ValueInput.createByReal(25.6))
     
     origin = adsk.core.Point3D.create(0, 0, 0)
     # Use a vector to explicitly set the direction (e.g., Y-axis (0, 1, 0))
@@ -151,6 +151,7 @@ def command_destroy(args: adsk.core.CommandEventArgs):
 def create_hsw(inputs: adsk.core.CommandInputs):
     try:    
         occurence = design.rootComponent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+       
         component = occurence.component
         component.name = "Honeycomb Storage Wall"
 
@@ -190,33 +191,108 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         xSpacing = outerSideLength*2
         ySpacing = outerRadius*2
 
-        honeyCombCenterPoint = adsk.core.Point3D.create(outerSideLength, outerRadius, 0)
-        honeyCombStarterInnerHexagon = sketchLines.addScribedPolygon(honeyCombCenterPoint, 6, math.pi/2, innerRadius, False)
-        honeyCombStarterOuterHexagon = sketchLines.addScribedPolygon(honeyCombCenterPoint, 6, math.pi/2, outerRadius, False)
+        honeycombCenterPoint = adsk.core.Point3D.create(outerSideLength, outerRadius, 0)
+        honeycombStarterInnerHexagon = sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, innerRadius, False)
+        honeycombStarterOuterHexagon = sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, outerRadius, False)
 
         extrude = component.features.extrudeFeatures
 
-        honeycombBody = extrude.addSimple(newSketch.profiles.item(1), adsk.core.ValueInput.createByReal(thickness), adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-
-        if honeycombBody:
-            body = honeycombBody.bodies.item(0)
-            body.name = "Honeycomb"
+        honeycombBodyExtrudeFeature = extrude.addSimple(newSketch.profiles.item(1), adsk.core.ValueInput.createByReal(thickness), adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+        honeycombBody = honeycombBodyExtrudeFeature.bodies.item(0)
+        honeycombBody.name = "Honeycomb"            
 
         #create sketch plane on top of newly extruded honeycomb
-        honeycombFacePlane = honeycombBody.endFaces[0]
+        honeycombFacePlane = honeycombBodyExtrudeFeature.endFaces[0]
         facePlaneSketch = component.sketches.add(honeycombFacePlane)
         facePlaneSketch.name = "HoneyComb_Top"
 
         #project honeycomb inner hexagon into new sketch
-        projectedEdges = facePlaneSketch.projectCutEdges(honeycombBody.bodies.item(0))
+        projectedEdges = facePlaneSketch.projectCutEdges(honeycombBodyExtrudeFeature.bodies.item(0))
         connectedCurves = facePlaneSketch.findConnectedCurves(projectedEdges.item(0))
 
         #create one mm offset hexagon from the inner hexagon
         innerOffset = .1
-        honeyCombStarterInnerHexagon = facePlaneSketch.sketchCurves.sketchLines.addScribedPolygon(honeyCombCenterPoint, 6, math.pi/2, innerRadius+innerOffset, False)
+        honeycombStarterInnerHexagon = facePlaneSketch.sketchCurves.sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, innerRadius+innerOffset, False)
 
         lipDepth = -.29
-        extrude.addSimple(facePlaneSketch.profiles.item(0), adsk.core.ValueInput.createByReal(lipDepth), adsk.fusion.FeatureOperations.CutFeatureOperation)
+        honeycombCut = extrude.addSimple(facePlaneSketch.profiles.item(0), adsk.core.ValueInput.createByReal(lipDepth), adsk.fusion.FeatureOperations.CutFeatureOperation)
+
+        #chamfer new inner edge
+        chamferEdgeCollection = adsk.core.ObjectCollection.create()
+        chamferEdgeCollection.add(honeycombBody.edges.item(18))
+        chamferEdgeCollection.add(honeycombBody.edges.item(19))
+        chamferEdgeCollection.add(honeycombBody.edges.item(20))
+        chamferEdgeCollection.add(honeycombBody.edges.item(21))
+        chamferEdgeCollection.add(honeycombBody.edges.item(22))
+        chamferEdgeCollection.add(honeycombBody.edges.item(23))
+
+        innerChamferDistance1 = adsk.core.ValueInput.createByReal(.09)
+        innerChamferDistance2 = adsk.core.ValueInput.createByReal(.1)
+
+        innerChamferInput = component.features.chamferFeatures.createInput2()
+        innerChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(chamferEdgeCollection, innerChamferDistance1, innerChamferDistance2, False, True)
+        innerChamfer = component.features.chamferFeatures.add(innerChamferInput)
+
+        #chamber the bottom inner edge
+        bottomChamferEdgeCollection = adsk.core.ObjectCollection.create()
+        bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(0))
+        bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(1))
+        bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(2))
+        bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(3))
+        bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(4))
+        bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(5))
+
+        innerChamferDistance1 = adsk.core.ValueInput.createByReal(.05)
+        innerChamferDistance2 = adsk.core.ValueInput.createByReal(.04)
+
+        bottomChamferInput = component.features.chamferFeatures.createInput2()
+        bottomChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(bottomChamferEdgeCollection, innerChamferDistance1, innerChamferDistance2, False, True)
+        bottomChamfer = component.features.chamferFeatures.add(bottomChamferInput)
+
+        #mirror honeycomb body so we have a second one to the upper right of it
+        mirrorPlane = honeycombBody.faces.item(25)
+        
+        entitiesToMirror = adsk.core.ObjectCollection.create()
+        entitiesToMirror.add(honeycombBody)
+
+        mirrorInput = component.features.mirrorFeatures.createInput(entitiesToMirror, mirrorPlane)
+        mirrorInput.isCombine = False 
+        mirrorFeature = component.features.mirrorFeatures.add(mirrorInput)
+
+        #duplicate the first honeycomb with a rectangular pattern
+        firstHoneycombCollection = adsk.core.ObjectCollection.create()
+        firstHoneycombCollection.add(honeycombBody)
+
+        firstPatternDistanceRaw = 2.36
+        secondPatternDistanceRaw = outerSideLength*3
+        firstPatternDistance1 = adsk.core.ValueInput.createByReal(firstPatternDistanceRaw)
+        firstPatternQuantity1 = adsk.core.ValueInput.createByReal(math.floor(height/firstPatternDistanceRaw))
+        secondPatternDistance = adsk.core.ValueInput.createByReal(secondPatternDistanceRaw)
+        firstPatternQuantity2 = adsk.core.ValueInput.createByReal(math.floor(width/secondPatternDistanceRaw))
+
+        firstPatternInput = component.features.rectangularPatternFeatures.createInput(firstHoneycombCollection, design.rootComponent.yConstructionAxis, firstPatternQuantity1, firstPatternDistance1, adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
+        firstPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, firstPatternQuantity2, secondPatternDistance)
+        firstPattern = component.features.rectangularPatternFeatures.add(firstPatternInput)
+
+        #duplicate the second honeycomb with a rectangular pattern
+        secondHoneycombCollection = adsk.core.ObjectCollection.create()
+        secondHoneycombCollection.add(mirrorFeature.bodies.item(0))
+
+        secondPatternInput = component.features.rectangularPatternFeatures.createInput(secondHoneycombCollection, design.rootComponent.yConstructionAxis, firstPatternQuantity1, firstPatternDistance1, adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
+        secondPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, firstPatternQuantity2, secondPatternDistance)
+        secondPattern = component.features.rectangularPatternFeatures.add(secondPatternInput)
+
+        #combine all the bodies
+        allbodiesExceptFirst = adsk.core.ObjectCollection.create()
+        count=0
+        for body in component.bRepBodies:
+            if count != 0:
+                allbodiesExceptFirst.add(body)
+            count+=1
+
+        combineInput = component.features.combineFeatures.createInput(component.bRepBodies.item(0), allbodiesExceptFirst)
+        combineInput.isKeepToolBodies = False
+        combineFeature = component.features.combineFeatures.add(combineInput)
 
     except:
         if ui:

@@ -31,8 +31,6 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 # they are not released and garbage collected.
 local_handlers = []
 
-design = adsk.fusion.Design.cast(app.activeProduct)
-
 # Create a new sketch on the XY plane
 newSketch = None
 
@@ -82,8 +80,11 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     inputs = args.command.commandInputs
 
     # Input Definitions
-    width_input = inputs.addDistanceValueCommandInput('width','Width', adsk.core.ValueInput.createByReal(25.6))
-    height_input = inputs.addDistanceValueCommandInput('height','Height', adsk.core.ValueInput.createByReal(25.6))
+    width_input = inputs.addDistanceValueCommandInput('width','Width', adsk.core.ValueInput.createByReal(10.0))
+    height_input = inputs.addDistanceValueCommandInput('height','Height', adsk.core.ValueInput.createByReal(10.0))
+
+    bottomBorderInput = inputs.addBoolValueInput('bottom_border', "Bottom Border", True)
+
     
     origin = adsk.core.Point3D.create(0, 0, 0)
     # Use a vector to explicitly set the direction (e.g., Y-axis (0, 1, 0))
@@ -149,30 +150,30 @@ def command_destroy(args: adsk.core.CommandEventArgs):
     local_handlers = []
 
 def create_hsw(inputs: adsk.core.CommandInputs):
-    try:    
+    try:   
+        design = adsk.fusion.Design.cast(app.activeProduct) 
         occurence = design.rootComponent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
        
-        component = occurence.component
-        component.name = "Honeycomb Storage Wall"
+        #TODO use root component for now
+        component = design.rootComponent
+        #component.name = "Honeycomb Storage Wall"
 
-        newSketch = component.sketches.add(component.xYConstructionPlane)
-        newSketch.name = "HoneyComb_Base"
-
-        sketch = adsk.fusion.Sketch.cast(app.activeEditObject)
+        baseSketch = component.sketches.add(component.xYConstructionPlane)
+        baseSketch.name = "Honeycomb_Base"
 
         width_input: adsk.core.ValueCommandInput = inputs.itemById('width')
         width = width_input.value
         height_input: adsk.core.ValueCommandInput = inputs.itemById('height')
         height = height_input.value
-
-        sketchLines = newSketch.sketchCurves.sketchLines
+        bottomBorderInput: adsk.core.BoolValueCommandInput = inputs.itemById('bottom_border')
+        createBottomBorder = bottomBorderInput.value
         
         #define center and corner of overall construction boundaries
         centerPoint = adsk.core.Point3D.create(0, 0, 0)
         cornerPoint = adsk.core.Point3D.create(width, height, 0) # Defines corner relative to center
 
         # Add the rectangle
-        rectangle = sketchLines.addTwoPointRectangle(centerPoint, cornerPoint)
+        rectangle = baseSketch.sketchCurves.sketchLines.addTwoPointRectangle(centerPoint, cornerPoint)
         
         for line in rectangle:
             line.isConstruction = True 
@@ -180,42 +181,166 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         xOffset = 0.0
         yOffset = 0.0
 
-        thickness = 0.8
+        thickness = adsk.core.ValueInput.createByReal(0.8)
 
+        innerOffset = .1
+        lipDepth = -.29
         innerRadius = 1.00
         radiusOffset = 0.18
         outerRadius = innerRadius+radiusOffset
-        innerSideLength = innerRadius * (2*math.tan(math.pi/6))
-        outerSideLength = outerRadius * (2*math.tan(math.pi/6))
-
-        xSpacing = outerSideLength*2
-        ySpacing = outerRadius*2
+        innerSideLength = innerRadius * (2 * math.tan(math.pi/6))
+        outerSideLength = outerRadius * (2 * math.tan(math.pi/6))
+        innerChamferDistance1 = adsk.core.ValueInput.createByReal(.09)
+        innerChamferDistance2 = adsk.core.ValueInput.createByReal(.1)
+        bottomChamferDistance1 = adsk.core.ValueInput.createByReal(.05)
+        bottomChamferDistance2 = adsk.core.ValueInput.createByReal(.04)
 
         honeycombCenterPoint = adsk.core.Point3D.create(outerSideLength, outerRadius, 0)
-        honeycombStarterInnerHexagon = sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, innerRadius, False)
-        honeycombStarterOuterHexagon = sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, outerRadius, False)
+        honeycombStarterInnerHexagon = baseSketch.sketchCurves.sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, innerRadius, False)
+        honeycombStarterOuterHexagon = baseSketch.sketchCurves.sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, outerRadius, False)
 
-        extrude = component.features.extrudeFeatures
 
-        honeycombBodyExtrudeFeature = extrude.addSimple(newSketch.profiles.item(1), adsk.core.ValueInput.createByReal(thickness), adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+
+        borderBottomBody = None
+
+        if createBottomBorder:
+            #create bottom border sketch profiles
+            borderSketch = component.sketches.add(component.xYConstructionPlane)
+            borderSketch.name = "Honeycomb_Border"
+            
+            bottomBorderCenterPoint = adsk.core.Point3D.create(outerSideLength * 2.5, 0, 0)
+            bottomEdgeInnerHexagon = borderSketch.sketchCurves.sketchLines.addScribedPolygon(bottomBorderCenterPoint, 6, math.pi/2, innerRadius, False)
+            bottomEdgeOuterHexagon = borderSketch.sketchCurves.sketchLines.addScribedPolygon(bottomBorderCenterPoint, 6, math.pi/2, outerRadius, False)
+
+            bottomEdgeSplitLine = borderSketch.sketchCurves.sketchLines.addByTwoPoints(
+                bottomEdgeOuterHexagon.item(0).endSketchPoint,
+                bottomEdgeOuterHexagon.item(3).endSketchPoint
+            )
+
+            bottomXOffset = radiusOffset/math.tan(math.pi/3)
+            firstPoint = adsk.core.Point3D.create(bottomEdgeInnerHexagon.item(0).endSketchPoint.geometry.x + bottomXOffset, bottomEdgeInnerHexagon.item(0).endSketchPoint.geometry.y + radiusOffset, 0)
+            secondPoint = adsk.core.Point3D.create(bottomEdgeInnerHexagon.item(3).endSketchPoint.geometry.x - bottomXOffset, bottomEdgeInnerHexagon.item(3).endSketchPoint.geometry.y + radiusOffset, 0)
+            borderSketch.sketchCurves.sketchLines.addByTwoPoints(
+                firstPoint,
+                secondPoint
+            )
+
+            #grab profiles and extrude upwards
+            profileCollection = adsk.core.ObjectCollection.create()
+            profileCollection.add(borderSketch.profiles.item(2))
+            profileCollection.add(borderSketch.profiles.item(4))
+
+            bottomBorderExtrudeInput = component.features.extrudeFeatures.createInput(profileCollection, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+            bottomBorderExtrudeInput.setOneSideExtent(adsk.fusion.DistanceExtentDefinition.create(thickness), adsk.fusion.ExtentDirections.PositiveExtentDirection)
+            bottomBorderExtrudeFeature = component.features.extrudeFeatures.add(bottomBorderExtrudeInput)
+
+            borderTopSketch = component.sketches.add(bottomBorderExtrudeFeature.endFaces[0])
+            borderTopSketch.name = "Honeycomb_BorderTop"
+            
+            topCornerOffsetX = innerOffset / math.tan(math.pi/3)
+            cornerOffset = math.sqrt((innerOffset*2)*(innerOffset*2)-innerOffset*innerOffset)
+
+            manualPolyBottomLeft = adsk.core.Point3D.create(firstPoint.x-cornerOffset, firstPoint.y - innerOffset)
+            manualPolyBottomRight = adsk.core.Point3D.create(secondPoint.x+cornerOffset, secondPoint.y - innerOffset)
+            
+            manualPolyTopLeft = adsk.core.Point3D.create(
+                bottomEdgeInnerHexagon.item(5).endSketchPoint.geometry.x-topCornerOffsetX,
+                bottomEdgeInnerHexagon.item(5).endSketchPoint.geometry.y+innerOffset
+            )
+
+            manualPolyTopRight = adsk.core.Point3D.create(
+                bottomEdgeInnerHexagon.item(4).endSketchPoint.geometry.x+topCornerOffsetX,
+                bottomEdgeInnerHexagon.item(4).endSketchPoint.geometry.y+innerOffset
+            )
+
+            borderTopSketch.sketchCurves.sketchLines.addByTwoPoints(
+                manualPolyBottomLeft,
+                manualPolyBottomRight,
+            )
+
+            borderTopSketch.sketchCurves.sketchLines.addByTwoPoints(
+                manualPolyBottomLeft,
+                manualPolyTopLeft
+            )
+
+            borderTopSketch.sketchCurves.sketchLines.addByTwoPoints(
+                manualPolyTopLeft,
+                manualPolyTopRight
+            )
+
+            borderTopSketch.sketchCurves.sketchLines.addByTwoPoints(
+                manualPolyTopRight,
+                manualPolyBottomRight
+            )
+
+            #extrude down to start the lip
+            bottomBorderCutFeature = component.features.extrudeFeatures.addSimple(
+                borderTopSketch.profiles.item(0),
+                adsk.core.ValueInput.createByReal(lipDepth),
+                adsk.fusion.FeatureOperations.CutFeatureOperation
+            )
+            
+            #chamfer new inner edge
+            borderBottomChamferEdgeCollection = adsk.core.ObjectCollection.create()
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(12))
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(13))
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(14))
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(15))
+
+            borderBottomInnerChamferInput = component.features.chamferFeatures.createInput2()
+            borderBottomInnerChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(borderBottomChamferEdgeCollection, innerChamferDistance1, innerChamferDistance2, False, True)
+            borderBottomInnerChamferFeature = component.features.chamferFeatures.add(borderBottomInnerChamferInput)
+
+            # #chamfer bottom
+            # count=0
+            # for edge in bottomBorderExtrudeFeature.bodies[0].edges:
+            #     borderBottomChamferEdgeCollection = adsk.core.ObjectCollection.create()
+            #     borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(count))
+            #     design.selectionSets.add(borderBottomChamferEdgeCollection.asArray(), "{count}")
+            #     count+=1
+
+            borderBottomChamferEdgeCollection = adsk.core.ObjectCollection.create()
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(13))
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(16))
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(26))
+            borderBottomChamferEdgeCollection.add(bottomBorderExtrudeFeature.bodies[0].edges.item(27))
+
+            borderBottomBottomChamferInput = component.features.chamferFeatures.createInput2()
+            borderBottomBottomChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(borderBottomChamferEdgeCollection, bottomChamferDistance1, bottomChamferDistance2, False, True)
+            borderBottomBottomChamferFeature = component.features.chamferFeatures.add(borderBottomBottomChamferInput)
+
+            borderBottomBody = bottomBorderExtrudeFeature.bodies[0]
+
+
+
+
+
+
+
+
+
+
+
+
+
+        honeycombBodyExtrudeFeature = component.features.extrudeFeatures.addSimple(baseSketch.profiles.item(1), thickness, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
         honeycombBody = honeycombBodyExtrudeFeature.bodies.item(0)
         honeycombBody.name = "Honeycomb"            
 
         #create sketch plane on top of newly extruded honeycomb
         honeycombFacePlane = honeycombBodyExtrudeFeature.endFaces[0]
         facePlaneSketch = component.sketches.add(honeycombFacePlane)
-        facePlaneSketch.name = "HoneyComb_Top"
+        facePlaneSketch.name = "Honeycomb_Top"
 
         #project honeycomb inner hexagon into new sketch
         projectedEdges = facePlaneSketch.projectCutEdges(honeycombBodyExtrudeFeature.bodies.item(0))
         connectedCurves = facePlaneSketch.findConnectedCurves(projectedEdges.item(0))
 
         #create one mm offset hexagon from the inner hexagon
-        innerOffset = .1
+
         honeycombStarterInnerHexagon = facePlaneSketch.sketchCurves.sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, innerRadius+innerOffset, False)
 
-        lipDepth = -.29
-        honeycombCut = extrude.addSimple(facePlaneSketch.profiles.item(0), adsk.core.ValueInput.createByReal(lipDepth), adsk.fusion.FeatureOperations.CutFeatureOperation)
+        honeycombCutFeature = component.features.extrudeFeatures.addSimple(facePlaneSketch.profiles.item(0), adsk.core.ValueInput.createByReal(lipDepth), adsk.fusion.FeatureOperations.CutFeatureOperation)
 
         #chamfer new inner edge
         chamferEdgeCollection = adsk.core.ObjectCollection.create()
@@ -225,9 +350,6 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         chamferEdgeCollection.add(honeycombBody.edges.item(21))
         chamferEdgeCollection.add(honeycombBody.edges.item(22))
         chamferEdgeCollection.add(honeycombBody.edges.item(23))
-
-        innerChamferDistance1 = adsk.core.ValueInput.createByReal(.09)
-        innerChamferDistance2 = adsk.core.ValueInput.createByReal(.1)
 
         innerChamferInput = component.features.chamferFeatures.createInput2()
         innerChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(chamferEdgeCollection, innerChamferDistance1, innerChamferDistance2, False, True)
@@ -242,11 +364,10 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(4))
         bottomChamferEdgeCollection.add(honeycombBody.faces.item(25).edges.item(5))
 
-        innerChamferDistance1 = adsk.core.ValueInput.createByReal(.05)
-        innerChamferDistance2 = adsk.core.ValueInput.createByReal(.04)
+
 
         bottomChamferInput = component.features.chamferFeatures.createInput2()
-        bottomChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(bottomChamferEdgeCollection, innerChamferDistance1, innerChamferDistance2, False, True)
+        bottomChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(bottomChamferEdgeCollection, bottomChamferDistance1, bottomChamferDistance2, False, True)
         bottomChamfer = component.features.chamferFeatures.add(bottomChamferInput)
 
         #mirror honeycomb body so we have a second one to the upper right of it
@@ -282,6 +403,20 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         secondPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, firstPatternQuantity2, secondPatternDistance)
         secondPattern = component.features.rectangularPatternFeatures.add(secondPatternInput)
 
+        if createBottomBorder and borderBottomBody is not None:
+            bottomBorderCollection = adsk.core.ObjectCollection.create()
+            bottomBorderCollection.add(borderBottomBody)
+
+            bottomBorderPatternInput = component.features.rectangularPatternFeatures.createInput(
+                bottomBorderCollection,
+                design.rootComponent.xConstructionAxis,
+                firstPatternQuantity2,
+                secondPatternDistance,
+                adsk.fusion.PatternDistanceType.SpacingPatternDistanceType
+            )
+
+            bottomBorderPatternFeature = component.features.rectangularPatternFeatures.add(bottomBorderPatternInput)
+
         #combine all the bodies
         allbodiesExceptFirst = adsk.core.ObjectCollection.create()
         count=0
@@ -293,6 +428,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         combineInput = component.features.combineFeatures.createInput(component.bRepBodies.item(0), allbodiesExceptFirst)
         combineInput.isKeepToolBodies = False
         combineFeature = component.features.combineFeatures.add(combineInput)
+            
 
     except:
         if ui:

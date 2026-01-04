@@ -418,7 +418,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
             bottomBorderPatternInput = component.features.rectangularPatternFeatures.createInput(
                 bottomBorderCollection,
                 design.rootComponent.xConstructionAxis,
-                firstPatternQuantity2,
+                secondPatternQuantity2,
                 secondPatternDistance,
                 adsk.fusion.PatternDistanceType.SpacingPatternDistanceType
             )

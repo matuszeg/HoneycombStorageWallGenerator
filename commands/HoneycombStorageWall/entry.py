@@ -388,8 +388,10 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         secondPatternDistanceRaw = outerSideLength*3
         firstPatternDistance1 = adsk.core.ValueInput.createByReal(firstPatternDistanceRaw)
         firstPatternQuantity1 = adsk.core.ValueInput.createByReal(math.floor(height/firstPatternDistanceRaw))
+        secondPatternQuantity1 = adsk.core.ValueInput.createByReal(math.floor((height-firstPatternDistanceRaw/2)/firstPatternDistanceRaw))
         secondPatternDistance = adsk.core.ValueInput.createByReal(secondPatternDistanceRaw)
-        firstPatternQuantity2 = adsk.core.ValueInput.createByReal(math.floor(width/secondPatternDistanceRaw))
+        firstPatternQuantity2 = adsk.core.ValueInput.createByReal(math.floor((width+secondPatternDistanceRaw/2)/secondPatternDistanceRaw))
+        secondPatternQuantity2 = adsk.core.ValueInput.createByReal(math.floor(width/secondPatternDistanceRaw))
 
         firstPatternInput = component.features.rectangularPatternFeatures.createInput(firstHoneycombCollection, design.rootComponent.yConstructionAxis, firstPatternQuantity1, firstPatternDistance1, adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
         firstPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, firstPatternQuantity2, secondPatternDistance)
@@ -399,8 +401,14 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         secondHoneycombCollection = adsk.core.ObjectCollection.create()
         secondHoneycombCollection.add(mirrorFeature.bodies.item(0))
 
-        secondPatternInput = component.features.rectangularPatternFeatures.createInput(secondHoneycombCollection, design.rootComponent.yConstructionAxis, firstPatternQuantity1, firstPatternDistance1, adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
-        secondPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, firstPatternQuantity2, secondPatternDistance)
+        secondPatternInput = component.features.rectangularPatternFeatures.createInput(
+            secondHoneycombCollection,
+            design.rootComponent.yConstructionAxis,
+            secondPatternQuantity1,
+            firstPatternDistance1,
+            adsk.fusion.PatternDistanceType.SpacingPatternDistanceType
+        )
+        secondPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, secondPatternQuantity2, secondPatternDistance)
         secondPattern = component.features.rectangularPatternFeatures.add(secondPatternInput)
 
         if createBottomBorder and borderBottomBody is not None:

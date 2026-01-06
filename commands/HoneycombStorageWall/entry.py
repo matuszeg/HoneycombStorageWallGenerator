@@ -5,7 +5,7 @@ import traceback
 
 import adsk.fusion
 
-from ...lib.fusionAddInUtils.honeycombStorageWallUtils import constants, utils
+from ...lib.honeycombStorageWallUtils import constants, utils
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -33,9 +33,6 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 # Local list of event handlers used to maintain a reference so
 # they are not released and garbage collected.
 local_handlers = []
-
-# Create a new sketch on the XY plane
-newSketch = None
 
 # Executed when add-in is run.
 def start():
@@ -88,6 +85,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     bottomBorderInput = inputs.addBoolValueInput('bottom_border', "Bottom Border", True)
     topBorderInput = inputs.addBoolValueInput('top_border', "Top Border", True)
+    leftBorderInput = inputs.addBoolValueInput('left_border', "Left Border", True)
 
     
     origin = adsk.core.Point3D.create(0, 0, 0)
@@ -173,6 +171,8 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         createBottomBorder = bottomBorderInput.value
         topBorderInput: adsk.core.BoolValueCommandInput = inputs.itemById('top_border')
         createTopBorder = topBorderInput.value
+        leftBorderInput: adsk.core.BoolValueCommandInput = inputs.itemById('left_border')
+        createLeftBorder = leftBorderInput.value
         
         #define center and corner of overall construction boundaries
         centerPoint = adsk.core.Point3D.create(0, 0, 0)
@@ -196,7 +196,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         firstPatternQuantity2Raw = math.floor((width+secondPatternDistanceRaw/2)/secondPatternDistanceRaw)
         secondPatternQuantity1Raw = math.floor((height-firstPatternDistanceRaw/2)/firstPatternDistanceRaw)
         secondPatternQuantity2Raw = math.floor(width/secondPatternDistanceRaw)
-        firstPatternDistance1 = adsk.core.ValueInput.createByReal(firstPatternDistanceRaw)
+        firstPatternDistance = adsk.core.ValueInput.createByReal(firstPatternDistanceRaw)
         firstPatternQuantity1 = adsk.core.ValueInput.createByReal(firstPatternQuantity1Raw)
         secondPatternQuantity1 = adsk.core.ValueInput.createByReal(secondPatternQuantity1Raw)
         secondPatternDistance = adsk.core.ValueInput.createByReal(secondPatternDistanceRaw)
@@ -207,9 +207,9 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         honeycombStarterInnerHexagon = baseSketch.sketchCurves.sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, constants.INNER_RADIUS, False)
         honeycombStarterOuterHexagon = baseSketch.sketchCurves.sketchLines.addScribedPolygon(honeycombCenterPoint, 6, math.pi/2, constants.OUTER_RADIUS, False)
 
-
         borderBottomBody = None
         borderTopBody = None
+        borderLeftBody = None
 
         topPlaneInput = design.rootComponent.constructionPlanes.createInput()
         topPlaneInput.setByOffset(component.xYConstructionPlane, constants.TOTAL_THICKNESS)
@@ -219,33 +219,36 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         if createBottomBorder:
             centerPoint = adsk.core.Point3D.create(constants.SIDE_LENGTH * 2.5, 0, 0)
             borderBottomBody = utils.create_half_comb(constants.BorderType.BOTTOM, topPlane, component, centerPoint)
-            
+
+        doHorizontalShift = True
 
         if createTopBorder:
             firstEven = firstPatternQuantity1Raw % 2 == 0
             secondEven = secondPatternQuantity1Raw % 2 == 0
-            #even and odd = nothing
-            #even and even = shift
-            #odd and even = nothing
-            doShift = True
+
+
             if (not firstEven) ^ (not secondEven):
-                doShift = False
+                doHorizontalShift = False
 
             topBorderXOffset = 0
             topBorderYOffset = 0
             
-            if doShift:
+            if doHorizontalShift:
                 topBorderXOffset =  (-1 * secondPatternDistanceRaw / 2)
                 topBorderYOffset = (-1 * firstPatternDistanceRaw / 2)
-                
-            #create top border sketch profiles
+
             centerPoint = adsk.core.Point3D.create(
                 constants.SIDE_LENGTH * 2.5 + topBorderXOffset,
-                firstPatternDistance1.realValue*(secondPatternQuantity1.realValue+1) + topBorderYOffset
+                firstPatternDistance.realValue*(secondPatternQuantity1.realValue+1) + topBorderYOffset
             )
             borderTopBody = utils.create_half_comb(constants.BorderType.TOP, topPlane, component, centerPoint)
-            # topEdgeInnerHexagon = borderSketch.sketchCurves.sketchLines.addScribedPolygon(topBorderCenterPoint, 6, math.pi/2, constants.INNER_RADIUS, False)
-            # topEdgeOuterHexagon = borderSketch.sketchCurves.sketchLines.addScribedPolygon(topBorderCenterPoint, 6, math.pi/2, constants.OUTER_RADIUS, False)
+
+        if createLeftBorder:
+            centerPoint = adsk.core.Point3D.create(
+                constants.SIDE_LENGTH * 2.5 - secondPatternDistanceRaw,
+                firstPatternDistanceRaw
+            )
+            borderLeftBody = utils.create_half_comb(constants.BorderType.LEFT, topPlane, component, centerPoint)
 
         honeycombBodyExtrudeFeature = component.features.extrudeFeatures.addSimple(
             baseSketch.profiles.item(1),
@@ -310,7 +313,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
 
         
 
-        firstPatternInput = component.features.rectangularPatternFeatures.createInput(firstHoneycombCollection, design.rootComponent.yConstructionAxis, firstPatternQuantity1, firstPatternDistance1, adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
+        firstPatternInput = component.features.rectangularPatternFeatures.createInput(firstHoneycombCollection, design.rootComponent.yConstructionAxis, firstPatternQuantity1, firstPatternDistance, adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
         firstPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, firstPatternQuantity2, secondPatternDistance)
         firstPattern = component.features.rectangularPatternFeatures.add(firstPatternInput)
 
@@ -322,18 +325,24 @@ def create_hsw(inputs: adsk.core.CommandInputs):
             secondHoneycombCollection,
             design.rootComponent.yConstructionAxis,
             secondPatternQuantity1,
-            firstPatternDistance1,
+            firstPatternDistance,
             adsk.fusion.PatternDistanceType.SpacingPatternDistanceType
         )
         secondPatternInput.setDirectionTwo(design.rootComponent.xConstructionAxis, secondPatternQuantity2, secondPatternDistance)
         secondPattern = component.features.rectangularPatternFeatures.add(secondPatternInput)
 
         if createBottomBorder and borderBottomBody is not None:
-            bottomBorderPatternFeature = utils.duplicate_border_body(component, borderBottomBody, secondPatternQuantity2, secondPatternDistance)
+            bottomBorderPatternFeature = utils.duplicate_border_body(component, component.xConstructionAxis, borderBottomBody, secondPatternQuantity2Raw, secondPatternDistance)
 
         if createTopBorder and borderTopBody is not None:
-            topBorderPatternFeature = utils.duplicate_border_body(component, borderTopBody, secondPatternQuantity2, secondPatternDistance)
+            num_duplicates = secondPatternQuantity2Raw
+            if doHorizontalShift:
+                num_duplicates = firstPatternQuantity2Raw
 
+            topBorderPatternFeature = utils.duplicate_border_body(component, component.xConstructionAxis, borderTopBody, num_duplicates, secondPatternDistance)
+
+        if createLeftBorder and borderLeftBody is not None:
+            leftBorderPatternFeature = utils.duplicate_border_body(component, component.yConstructionAxis, borderLeftBody, secondPatternQuantity1Raw, firstPatternDistance)
 
         #combine all the bodies
         allbodiesExceptFirst = adsk.core.ObjectCollection.create()
@@ -346,7 +355,6 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         combineInput = component.features.combineFeatures.createInput(component.bRepBodies.item(0), allbodiesExceptFirst)
         combineInput.isKeepToolBodies = False
         combineFeature = component.features.combineFeatures.add(combineInput)
-            
 
     except:
         if ui:

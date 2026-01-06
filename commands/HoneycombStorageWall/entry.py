@@ -353,7 +353,11 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         secondPattern = component.features.rectangularPatternFeatures.add(secondPatternInput)
 
         if createBottomBorder and borderBottomBody is not None:
-            bottomBorderPatternFeature = utils.duplicate_border_body(component, component.xConstructionAxis, borderBottomBody, secondPatternQuantity2Raw, secondPatternDistance)
+            num_duplicates = secondPatternQuantity2Raw
+            if createLeftBorder:
+                num_duplicates = firstPatternQuantity2Raw
+
+            bottomBorderPatternFeature = utils.duplicate_border_body(component, component.xConstructionAxis, borderBottomBody, num_duplicates, secondPatternDistance)
 
         if createTopBorder and borderTopBody is not None:
             num_duplicates = secondPatternQuantity2Raw

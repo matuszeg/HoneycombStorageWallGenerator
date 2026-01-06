@@ -86,6 +86,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     bottomBorderInput = inputs.addBoolValueInput('bottom_border', "Bottom Border", True)
     topBorderInput = inputs.addBoolValueInput('top_border', "Top Border", True)
     leftBorderInput = inputs.addBoolValueInput('left_border', "Left Border", True)
+    rightBorderInput = inputs.addBoolValueInput('right_border', "Right Border", True)
 
     
     origin = adsk.core.Point3D.create(0, 0, 0)
@@ -173,23 +174,26 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         createTopBorder = topBorderInput.value
         leftBorderInput: adsk.core.BoolValueCommandInput = inputs.itemById('left_border')
         createLeftBorder = leftBorderInput.value
+        rightBorderInput: adsk.core.BoolValueCommandInput = inputs.itemById('right_border')
+        createRightBorder = rightBorderInput.value
 
         firstPatternDistanceRaw = constants.INNER_RADIUS * 2 + constants.RADIUS_OFFSET * 2
         secondPatternDistanceRaw = constants.SIDE_LENGTH * 3
 
-
-        #TODO offer an offset option
         xOffset = 0.0
         yOffset = 0.0
 
+        sideBordersExist = createLeftBorder or createRightBorder
+
+        if sideBordersExist:
+            yOffset = firstPatternDistanceRaw / 2
         if createLeftBorder:
             xOffset = secondPatternDistanceRaw / 6
-            yOffset = firstPatternDistanceRaw / 2
 
         firstPatternQuantity1Raw = math.floor((height-yOffset) / firstPatternDistanceRaw)
         firstPatternQuantity2Raw = math.floor(((width-xOffset) + secondPatternDistanceRaw / 2) / secondPatternDistanceRaw)
         secondPatternQuantity1Raw = math.floor(((height-yOffset) - firstPatternDistanceRaw / 2) / firstPatternDistanceRaw)
-        if createLeftBorder:
+        if sideBordersExist:
             #we need an additional one if there's a left border because it goes down into the offset
             secondPatternQuantity1Raw += 1
 
@@ -220,6 +224,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         borderBottomBody = None
         borderTopBody = None
         borderLeftBody = None
+        borderRightBody = None
 
         topPlaneInput = design.rootComponent.constructionPlanes.createInput()
         topPlaneInput.setByOffset(component.xYConstructionPlane, constants.TOTAL_THICKNESS)
@@ -229,16 +234,16 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         if createBottomBorder:
             xPos = xOffset + constants.SIDE_LENGTH * 2.5
             yPos = yOffset
-            if createLeftBorder:
+            if sideBordersExist:
                 xPos -= secondPatternDistanceRaw/2
                 yPos -= yOffset
 
             centerPoint = adsk.core.Point3D.create(xPos, yPos, 0)
             borderBottomBody = utils.create_half_comb(constants.BorderType.BOTTOM, topPlane, component, centerPoint)
 
-
-
         doHorizontalShift = True
+        doVerticalShift = True
+
         if createTopBorder:
             firstEven = firstPatternQuantity1Raw % 2 == 0
             secondEven = secondPatternQuantity1Raw % 2 == 0
@@ -250,14 +255,14 @@ def create_hsw(inputs: adsk.core.CommandInputs):
             topBorderXOffset = 0
             topBorderYOffset = 0
 
-            if createLeftBorder:
+            if sideBordersExist:
                 doHorizontalShift = not doHorizontalShift
             
             if doHorizontalShift:
                 topBorderXOffset =  (-1 * secondPatternDistanceRaw / 2)
                 topBorderYOffset = (-1 * firstPatternDistanceRaw / 2)
 
-            if createLeftBorder:
+            if sideBordersExist:
                 topBorderYOffset -= firstPatternDistanceRaw
 
             centerPoint = adsk.core.Point3D.create(
@@ -272,6 +277,27 @@ def create_hsw(inputs: adsk.core.CommandInputs):
                 yOffset
             )
             borderLeftBody = utils.create_half_comb(constants.BorderType.LEFT, topPlane, component, centerPoint)
+
+        if createRightBorder:
+            if firstPatternQuantity2Raw == secondPatternQuantity2Raw:
+                doVerticalShift = True
+            else:
+                doVerticalShift = False
+
+            borderXOffset = -1 * secondPatternDistanceRaw * 1 / 6
+            borderYOffset = 0
+
+
+            if doVerticalShift:
+                borderXOffset = -1 * secondPatternDistanceRaw * 2 / 3
+                borderYOffset = firstPatternDistanceRaw / 2
+
+
+            centerPoint = adsk.core.Point3D.create(
+                xOffset + secondPatternDistanceRaw*(secondPatternQuantity2Raw+1) + borderXOffset,
+                yOffset + borderYOffset
+            )
+            borderRightBody = utils.create_half_comb(constants.BorderType.RIGHT, topPlane, component, centerPoint)
 
         honeycombBodyExtrudeFeature = component.features.extrudeFeatures.addSimple(
             baseSketch.profiles.item(1),
@@ -317,7 +343,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
 
         #mirror honeycomb body so we have a second one to the upper right of it
         mirrorPlane = honeycombBody.faces.item(25)
-        if createLeftBorder:
+        if sideBordersExist:
             mirrorPlane = honeycombBody.faces.item(26)
 
         
@@ -354,7 +380,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
 
         if createBottomBorder and borderBottomBody is not None:
             num_duplicates = secondPatternQuantity2Raw
-            if createLeftBorder:
+            if sideBordersExist:
                 num_duplicates = firstPatternQuantity2Raw
 
             bottomBorderPatternFeature = utils.duplicate_border_body(component, component.xConstructionAxis, borderBottomBody, num_duplicates, secondPatternDistance)
@@ -368,6 +394,13 @@ def create_hsw(inputs: adsk.core.CommandInputs):
 
         if createLeftBorder and borderLeftBody is not None:
             leftBorderPatternFeature = utils.duplicate_border_body(component, component.yConstructionAxis, borderLeftBody, secondPatternQuantity1Raw, firstPatternDistance)
+
+        if createRightBorder and borderRightBody is not None:
+            num_duplicates = secondPatternQuantity1Raw
+            if doVerticalShift:
+                num_duplicates = firstPatternQuantity1Raw
+
+            rightBorderPatternFeature = utils.duplicate_border_body(component, component.yConstructionAxis, borderRightBody, num_duplicates, firstPatternDistance)
 
         #combine all the bodies
         allbodiesExceptFirst = adsk.core.ObjectCollection.create()

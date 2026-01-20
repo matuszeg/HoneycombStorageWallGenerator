@@ -16,9 +16,17 @@ TOTAL_THICKNESS = adsk.core.ValueInput.createByReal(0.8)
 INNER_CHAMFER_DISTANCES = [adsk.core.ValueInput.createByReal(.09), adsk.core.ValueInput.createByReal(.1)]
 BOTTOM_CHAMFER_DISTANCES = [adsk.core.ValueInput.createByReal(.05), adsk.core.ValueInput.createByReal(.04)]
 
+VERTICAL_SPACING = INNER_RADIUS * 2 + RADIUS_OFFSET * 2
+HORIZONTAL_SPACING = SIDE_LENGTH * 3
 
 class BorderType(Enum):
     TOP = 1
     BOTTOM = 2
     LEFT = 3
     RIGHT = 4
+
+class CornerType(Enum):
+    TopLeft = 1
+    TopRight = 2
+    BottomRight = 3
+    BottomLeft = 4

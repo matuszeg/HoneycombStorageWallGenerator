@@ -26,11 +26,157 @@ def debug_selection_set_for_bodies_faces(body: 'adsk.fusion.BRepBody'):
         design.selectionSets.add(face_collection.asArray(), f"{body.name}_face_{count}")
         count += 1
 
+def create_quarter_comb(
+    type: CornerType,
+    topPlane:  'adsk.fusion.ConstructionPlane' ,
+    component: 'adsk.fusion.Component',
+    startingCenterPoint: adsk.core.Point3D
+):
+    name = ""
+    if type == CornerType.TopLeft:
+        name = "TopLeft"
+    elif type == CornerType.TopRight:
+        name = "TopRight"
+    elif type == CornerType.BottomRight:
+        name = "BottomRight"
+    elif type == CornerType.BottomLeft:
+        name = "BottomLeft"
+
+    sketchFeature = component.sketches.add(component.xYConstructionPlane)
+    sketchFeature.name = "Honeycomb_Corner_" + name
+
+    innerHexagon = sketchFeature.sketchCurves.sketchLines.addScribedPolygon(startingCenterPoint, 6, math.pi / 2,
+                                                                            INNER_RADIUS, False)
+    outerHexagon = sketchFeature.sketchCurves.sketchLines.addScribedPolygon(startingCenterPoint, 6, math.pi / 2,
+                                                                            OUTER_RADIUS, False)
+
+
+    horizontalSplitLine = sketchFeature.sketchCurves.sketchLines.addByTwoPoints(
+        startingCenterPoint,
+        adsk.core.Point3D.create(startingCenterPoint.x + HORIZONTAL_SPACING / 3, startingCenterPoint.y)
+    )
+
+    xOffset = RADIUS_OFFSET / math.tan(math.pi / 3)
+
+    horizontalInnerSplitLine = sketchFeature.sketchCurves.sketchLines.addByTwoPoints(
+        adsk.core.Point3D.create(startingCenterPoint.x + RADIUS_OFFSET, startingCenterPoint.y - RADIUS_OFFSET),
+        adsk.core.Point3D.create(startingCenterPoint.x + HORIZONTAL_SPACING / 3 - xOffset, startingCenterPoint.y - RADIUS_OFFSET)
+    )
+
+    verticalSplitLine = sketchFeature.sketchCurves.sketchLines.addByTwoPoints(
+        startingCenterPoint,
+        adsk.core.Point3D.create(startingCenterPoint.x, startingCenterPoint.y - VERTICAL_SPACING / 2)
+    )
+
+    verticalInnerSplitLine = sketchFeature.sketchCurves.sketchLines.addByTwoPoints(
+        adsk.core.Point3D.create(startingCenterPoint.x + RADIUS_OFFSET, startingCenterPoint.y - RADIUS_OFFSET),
+        adsk.core.Point3D.create(startingCenterPoint.x + RADIUS_OFFSET, startingCenterPoint.y - VERTICAL_SPACING / 2)
+    )
+
+    #grab profiles and extrude
+    profileCollection = adsk.core.ObjectCollection.create()
+    profileCollection.add(sketchFeature.profiles.item(0))
+    profileCollection.add(sketchFeature.profiles.item(1))
+    profileCollection.add(sketchFeature.profiles.item(3))
+    profileCollection.add(sketchFeature.profiles.item(4))
+
+    extrudeInput = component.features.extrudeFeatures.createInput(profileCollection,
+                                                                  adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+    extrudeInput.setOneSideExtent(adsk.fusion.DistanceExtentDefinition.create(TOTAL_THICKNESS),
+                                  adsk.fusion.ExtentDirections.PositiveExtentDirection)
+    extrudeFeature = component.features.extrudeFeatures.add(extrudeInput)
+
+    topSketchFeature = component.sketches.add(topPlane)
+    topSketchFeature.name = "Honeycomb_CornerTop_" + name
+
+    manualPolyCoords = []
+
+    innerPointTopLeft = adsk.core.Point3D.create(
+        startingCenterPoint.x + RADIUS_OFFSET - INNER_OFFSET,
+        startingCenterPoint.y - RADIUS_OFFSET + INNER_OFFSET
+    )
+    innerPointBottomLeft = adsk.core.Point3D.create(
+        startingCenterPoint.x + RADIUS_OFFSET - INNER_OFFSET,
+        startingCenterPoint.y - VERTICAL_SPACING / 2 + RADIUS_OFFSET - INNER_OFFSET
+    )
+
+    innerPointBottomRightXOffset = INNER_OFFSET * math.tan(math.pi / 6)
+
+    innerPointBottomRight = adsk.core.Point3D.create(
+        innerHexagon.item(2).endSketchPoint.geometry.x + innerPointBottomRightXOffset,
+        innerHexagon.item(2).endSketchPoint.geometry.y - INNER_OFFSET
+    )
+
+    # sin(60) = x / .16
+    # x = sin(60) * .16
+    # x = sin(60) * (.18-.1)*2
+
+    innerPointTopRightXOffset = math.sin(math.pi / 3) * (RADIUS_OFFSET - INNER_OFFSET) * 2
+
+    innerPointTopRight = adsk.core.Point3D.create(
+        outerHexagon.item(3).geometry.endPoint.x - innerPointTopRightXOffset,
+        innerPointTopLeft.y
+    )
+
+    manualPolyCoords.append([
+        innerPointTopLeft,
+        innerPointBottomLeft
+    ])
+
+    manualPolyCoords.append([
+        innerPointBottomLeft,
+        innerPointBottomRight
+    ])
+
+    manualPolyCoords.append([
+        innerPointBottomRight,
+        innerPointTopRight
+    ])
+
+    manualPolyCoords.append([
+        innerPointTopRight,
+        innerPointTopLeft
+    ])
+
+    for coords in manualPolyCoords:
+        topSketchFeature.sketchCurves.sketchLines.addByTwoPoints(
+            coords[0],
+            coords[1],
+        )
+
+    bottomBorderCutFeature = component.features.extrudeFeatures.addSimple(
+        topSketchFeature.profiles.item(0),
+        adsk.core.ValueInput.createByReal(LIP_DEPTH),
+        adsk.fusion.FeatureOperations.CutFeatureOperation
+    )
+
+    borderBottomChamferEdgeCollection = adsk.core.ObjectCollection.create()
+
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(12))
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(13))
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(14))
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(15))
+
+    borderBottomInnerChamferInput = component.features.chamferFeatures.createInput2()
+    borderBottomInnerChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(borderBottomChamferEdgeCollection, INNER_CHAMFER_DISTANCES[0], INNER_CHAMFER_DISTANCES[1], False, True)
+    borderBottomInnerChamferFeature = component.features.chamferFeatures.add(borderBottomInnerChamferInput)
+
+    borderBottomChamferEdgeCollection = adsk.core.ObjectCollection.create()
+
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(13))
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(16))
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(25))
+    borderBottomChamferEdgeCollection.add(extrudeFeature.bodies[0].edges.item(27))
+
+    borderBottomBottomChamferInput = component.features.chamferFeatures.createInput2()
+    borderBottomBottomChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(borderBottomChamferEdgeCollection, BOTTOM_CHAMFER_DISTANCES[0], BOTTOM_CHAMFER_DISTANCES[1], False, True)
+    borderBottomBottomChamferFeature = component.features.chamferFeatures.add(borderBottomBottomChamferInput)
+
 def create_half_comb(
-        type: BorderType,
-        topPlane: 'adsk.fusion.ConstructionPlane',
-        component: 'adsk.fusion.Component',
-        startingCenterPoint: adsk.core.Point3D
+    type: BorderType,
+    topPlane: 'adsk.fusion.ConstructionPlane',
+    component: 'adsk.fusion.Component',
+    startingCenterPoint: adsk.core.Point3D
 ):
     name = ""
     rotationFactor = 0
@@ -56,13 +202,9 @@ def create_half_comb(
     sketchFeature = component.sketches.add(component.xYConstructionPlane)
     sketchFeature.name = "Honeycomb_Border_" + name
 
-    #create bottom border sketch profiles
+    #create border sketch profiles
     innerHexagon = sketchFeature.sketchCurves.sketchLines.addScribedPolygon(startingCenterPoint, 6, math.pi/2, INNER_RADIUS, False)
     outerHexagon = sketchFeature.sketchCurves.sketchLines.addScribedPolygon(startingCenterPoint, 6, math.pi/2, OUTER_RADIUS, False)
-
-    outerHexagon.item(1)
-
-    splitLine = None
 
     splitLineSketchPoints = []
     innerSplitLineSketchPoints = []
@@ -244,8 +386,6 @@ def create_half_comb(
     borderBottomInnerChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(borderBottomChamferEdgeCollection, INNER_CHAMFER_DISTANCES[0], INNER_CHAMFER_DISTANCES[1], False, True)
     borderBottomInnerChamferFeature = component.features.chamferFeatures.add(borderBottomInnerChamferInput)
 
-
-
     borderBottomChamferEdgeCollection = adsk.core.ObjectCollection.create()
 
     if verticalSplit:
@@ -265,12 +405,6 @@ def create_half_comb(
     borderBottomBottomChamferFeature = component.features.chamferFeatures.add(borderBottomBottomChamferInput)
 
     if rotationFactor != 0:
-        # axisInput = component.constructionAxes.createInput()
-        
-        # axisInput.setByPerpendicularAtPoint(profileCollection[0], sketchFeature.sketchPoints[0])
-
-        # axis = component.constructionAxes.add(axisInput)
-
         rotationTransform = adsk.core.Matrix3D.create()
         rotationTransform.setToRotation(rotationFactor, adsk.core.Vector3D.create(0,0,1), startingCenterPoint)
 
@@ -282,7 +416,7 @@ def create_half_comb(
         # Add the move feature to the design
         component.features.moveFeatures.add(moveFeatureInput)
 
-
+    extrudeFeature.bodies[0].name =  "Honeycomb_Border_" + name
     return extrudeFeature.bodies[0]
 
 def duplicate_border_body(

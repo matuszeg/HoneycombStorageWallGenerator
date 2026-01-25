@@ -88,6 +88,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     leftBorderInput = inputs.addBoolValueInput('left_border', "Left Border", True)
     rightBorderInput = inputs.addBoolValueInput('right_border', "Right Border", True)
 
+    doCornersInput = inputs.addBoolValueInput('do_corners', "Include Corners", True, "", True)
     combineEverythingInput = inputs.addBoolValueInput('combine_everything', "Combine Everything", True, "", True)
 
     
@@ -175,6 +176,8 @@ def create_hsw(inputs: adsk.core.CommandInputs):
         createLeftBorder = leftBorderInput.value
         rightBorderInput: adsk.core.BoolValueCommandInput = inputs.itemById('right_border')
         createRightBorder = rightBorderInput.value
+        doCornersInput: adsk.core.BoolValueCommandInput = inputs.itemById('do_corners')
+        doCorners = doCornersInput.value
         combineEverythingInput: adsk.core.BoolValueCommandInput = inputs.itemById('combine_everything')
         combineEverything = combineEverythingInput.value
 
@@ -378,7 +381,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
                                                                        borderLeftBody, secondPatternVerticalQuantity,
                                                                        adsk.core.ValueInput.createByReal(constants.VERTICAL_SPACING))
 
-            if firstPatternVerticalQuantity == secondPatternVerticalQuantity:
+            if doCorners and firstPatternVerticalQuantity == secondPatternVerticalQuantity:
                 cornerStartingCenterPoint = adsk.core.Point3D.create(
                     centerPoint.x,
                     centerPoint.y + constants.VERTICAL_SPACING * firstPatternVerticalQuantity
@@ -418,6 +421,29 @@ def create_hsw(inputs: adsk.core.CommandInputs):
                                                                         borderRightBody, num_duplicates,
                                                                         adsk.core.ValueInput.createByReal(
                                                                             constants.VERTICAL_SPACING))
+            if doCorners and firstPatternHorizontalQuantity == secondPatternHorizontalQuantity:
+                cornerStartingCenterPoint = adsk.core.Point3D.create(
+                    centerPoint.x,
+                    centerPoint.y - constants.VERTICAL_SPACING
+                )
+                utils.create_quarter_comb(
+                    constants.CornerType.BottomRight,
+                    topPlane,
+                    component,
+                    cornerStartingCenterPoint
+                )
+
+                if firstPatternVerticalQuantity != secondPatternVerticalQuantity:
+                    upperCornerStartingCenterPoint = adsk.core.Point3D.create(
+                        centerPoint.x,
+                        centerPoint.y + constants.VERTICAL_SPACING*firstPatternVerticalQuantity
+                    )
+                    utils.create_quarter_comb(
+                        constants.CornerType.TopRight,
+                        topPlane,
+                        component,
+                        upperCornerStartingCenterPoint
+                    )
 
         if combineEverything and (createRightBorder or createLeftBorder or createTopBorder or createBottomBorder):
             #combine all the bodies

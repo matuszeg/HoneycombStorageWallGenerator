@@ -53,14 +53,14 @@ def create_quarter_comb(
 
     horizontalSplitLine = sketchFeature.sketchCurves.sketchLines.addByTwoPoints(
         startingCenterPoint,
-        adsk.core.Point3D.create(startingCenterPoint.x + HORIZONTAL_SPACING / 3, startingCenterPoint.y)
+        adsk.core.Point3D.create(startingCenterPoint.x + SIDE_LENGTH, startingCenterPoint.y)
     )
 
     xOffset = RADIUS_OFFSET / math.tan(math.pi / 3)
 
     horizontalInnerSplitLine = sketchFeature.sketchCurves.sketchLines.addByTwoPoints(
         adsk.core.Point3D.create(startingCenterPoint.x + RADIUS_OFFSET, startingCenterPoint.y - RADIUS_OFFSET),
-        adsk.core.Point3D.create(startingCenterPoint.x + HORIZONTAL_SPACING / 3 - xOffset, startingCenterPoint.y - RADIUS_OFFSET)
+        adsk.core.Point3D.create(startingCenterPoint.x + SIDE_LENGTH - xOffset, startingCenterPoint.y - RADIUS_OFFSET)
     )
 
     verticalSplitLine = sketchFeature.sketchCurves.sketchLines.addByTwoPoints(
@@ -171,6 +171,56 @@ def create_quarter_comb(
     borderBottomBottomChamferInput = component.features.chamferFeatures.createInput2()
     borderBottomBottomChamferInput.chamferEdgeSets.addTwoDistancesChamferEdgeSet(borderBottomChamferEdgeCollection, BOTTOM_CHAMFER_DISTANCES[0], BOTTOM_CHAMFER_DISTANCES[1], False, True)
     borderBottomBottomChamferFeature = component.features.chamferFeatures.add(borderBottomBottomChamferInput)
+
+
+
+    if type == CornerType.BottomRight:
+        cornerBody = extrudeFeature.bodies.item(0)
+        mirrorPlane = cornerBody.faces.item(17)
+
+        entitiesToMirror = adsk.core.ObjectCollection.create()
+        entitiesToMirror.add(cornerBody)
+
+        mirrorInput = component.features.mirrorFeatures.createInput(entitiesToMirror, mirrorPlane)
+        mirrorInput.isCombine = False
+
+        mirrorFeature = component.features.mirrorFeatures.add(mirrorInput)
+
+        #remove body we just mirrored from
+        removeFeatures = component.features.removeFeatures
+        removeFeature = removeFeatures.add(cornerBody)
+
+        #mirror again
+        newCornerBody = mirrorFeature.bodies.item(0)
+        mirrorPlane = newCornerBody.faces.item(20)
+
+        entitiesToMirror = adsk.core.ObjectCollection.create()
+        entitiesToMirror.add(newCornerBody)
+
+        mirrorInput = component.features.mirrorFeatures.createInput(entitiesToMirror, mirrorPlane)
+        mirrorInput.isCombine = False
+
+        mirrorFeature = component.features.mirrorFeatures.add(mirrorInput)
+
+        # remove body we just mirrored from
+        removeFeatures = component.features.removeFeatures
+        removeFeature = removeFeatures.add(newCornerBody)
+    if type == CornerType.TopRight:
+        cornerBody = extrudeFeature.bodies.item(0)
+        debug_selection_set_for_bodies_faces(cornerBody)
+        mirrorPlane = cornerBody.faces.item(20)
+
+        entitiesToMirror = adsk.core.ObjectCollection.create()
+        entitiesToMirror.add(cornerBody)
+
+        mirrorInput = component.features.mirrorFeatures.createInput(entitiesToMirror, mirrorPlane)
+        mirrorInput.isCombine = False
+
+        mirrorFeature = component.features.mirrorFeatures.add(mirrorInput)
+
+        #remove body we just mirrored from
+        removeFeatures = component.features.removeFeatures
+        removeFeature = removeFeatures.add(cornerBody)
 
 def create_half_comb(
     type: BorderType,

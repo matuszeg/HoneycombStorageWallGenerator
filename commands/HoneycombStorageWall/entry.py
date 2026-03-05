@@ -152,13 +152,14 @@ def command_destroy(args: adsk.core.CommandEventArgs):
 
 def create_hsw(inputs: adsk.core.CommandInputs):
     try:   
-        design = adsk.fusion.Design.cast(app.activeProduct) 
-        occurrence = design.rootComponent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
-       
-        #TODO use root component for now
+        design = adsk.fusion.Design.cast(app.activeProduct)
+
         component = design.rootComponent
-        #component = occurrence.component
-        #component.name = "Honeycomb Storage Wall"
+
+        if utils.supports_components():
+            occurrence = design.rootComponent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+            component = occurrence.component
+            component.name = "Honeycomb Storage Wall"
 
         baseSketch = component.sketches.add(component.xYConstructionPlane)
         baseSketch.name = "Honeycomb_Base"
@@ -445,7 +446,7 @@ def create_hsw(inputs: adsk.core.CommandInputs):
                         upperCornerStartingCenterPoint
                     )
 
-        if combineEverything and (createRightBorder or createLeftBorder or createTopBorder or createBottomBorder):
+        if combineEverything:
             #combine all the bodies
             allbodiesExceptFirst = adsk.core.ObjectCollection.create()
             count=0

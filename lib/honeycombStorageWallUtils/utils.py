@@ -26,6 +26,16 @@ def debug_selection_set_for_bodies_faces(body: 'adsk.fusion.BRepBody'):
         design.selectionSets.add(face_collection.asArray(), f"{body.name}_face_{count}")
         count += 1
 
+def supports_components():
+    app = adsk.core.Application.get()
+    design = adsk.fusion.Design.cast(app.activeProduct)
+    root = design.rootComponent
+    
+    #has_bodies = root.bRepBodies.count > 0
+    has_components = root.occurrences.count > 0
+    return has_components
+    
+
 def create_quarter_comb(
     type: CornerType,
     topPlane:  'adsk.fusion.ConstructionPlane' ,
